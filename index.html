@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reconocedor de colores con IA</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--txt:#1d2330;--mut:#6b7385;--bd:#d9dde5;--acc:#3b5bdb;--acc-t:#fff;--err:#c0392b}
+  @media (prefers-color-scheme:dark){:root{--bg:#14171d;--card:#1d222b;--txt:#e8ebf0;--mut:#9aa3b5;--bd:#333a47;--acc:#6c8cff;--acc-t:#101420;--err:#ff7b6b}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  main{max-width:960px;margin:0 auto;padding:1rem}
+  h1{font-size:1.4rem;margin:.5rem 0 .2rem}
+  .sub{color:var(--mut);margin:0 0 1rem}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:1rem;margin-bottom:1rem}
+  .estado{font-size:.85rem;color:var(--mut)} .estado b.ok{color:#2e9e5b} .estado b.mal{color:var(--err)}
+  .paleta{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.7rem;align-items:center}
+  .sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--bd);cursor:pointer;padding:0}
+  .sw.sel{outline:3px solid var(--acc);outline-offset:2px}
+  .goma{border-radius:8px;width:auto;padding:0 .6rem;background:var(--card);color:var(--txt);font-size:.85rem}
+  .lienzo{width:100%;overflow:auto;border:1px solid var(--bd);border-radius:8px;background:#fff}
+  canvas{display:block;width:100%;height:auto;background:#fff;touch-action:none;cursor:crosshair}
+  .barra{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.7rem}
+  button.btn,label.btn{font:inherit;padding:.55rem 1rem;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--txt);cursor:pointer}
+  button.principal{background:var(--acc);color:var(--acc-t);border-color:var(--acc);font-weight:600}
+  button:disabled{opacity:.6;cursor:wait}
+  select,input[type=range]{font:inherit}
+  select{padding:.45rem;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--txt)}
+  #vista{display:none;margin-top:.7rem}
+  #vista img{max-width:100%;max-height:240px;border-radius:8px;border:1px solid var(--bd)}
+  .fila{display:grid;grid-template-columns:30px 1fr;gap:.7rem;align-items:center;padding:.5rem 0;border-bottom:1px solid var(--bd)}
+  .mue{width:30px;height:30px;border-radius:7px;border:1px solid var(--bd)}
+  .barrita{height:8px;border-radius:4px;background:var(--bd);overflow:hidden;margin:.25rem 0}
+  .barrita>span{display:block;height:100%}
+  .dist{display:flex;height:24px;border-radius:7px;overflow:hidden;border:1px solid var(--bd)}
+  .dist>span{height:100%}
+  .peq{font-size:.85rem;color:var(--mut)}
+  table{border-collapse:collapse;width:100%;font-size:.88rem;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--bd);padding:.3rem .5rem;text-align:left}
+  .error{color:var(--err);font-weight:600}
+  h3,h4{margin:.9rem 0 .4rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>Reconocedor de colores con IA</h1>
+  <p class="sub">Pinta en el recuadro con la paleta del arcoíris o sube una imagen, y pulsa <b>Detectar</b>.</p>
+
+  <section class="card">
+    <div class="estado" id="estado">Comprobando servidor…</div>
+  </section>
+
+  <section class="card">
+    <div class="paleta" id="paleta" role="radiogroup" aria-label="Paleta de colores"></div>
+    <div class="lienzo"><canvas id="canvas" width="800" height="500"></canvas></div>
+    <div class="barra">
+      <label>Grosor <input type="range" id="grosor" min="2" max="60" value="14"></label>
+      <button class="btn" id="borrar" type="button">Borrar</button>
+      <label class="btn" for="archivo">Subir imagen</label>
+      <input type="file" id="archivo" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif" hidden>
+      <select id="metodo" aria-label="Método de búsqueda">
+        <option value="heuristica">Búsqueda heurística (A*)</option>
+        <option value="bfs">BFS (amplitud)</option>
+        <option value="dfs">DFS (profundidad)</option>
+      </select>
+      <button class="btn principal" id="detectar" type="button">Detectar</button>
+    </div>
+    <div id="vista"><p class="peq" id="nombreArchivo"></p><img id="previa" alt="Vista previa de la imagen subida"></div>
+    <p class="peq" id="origenInfo">Se analizará: el dibujo del recuadro.</p>
+  </section>
+
+  <section class="card" id="resultados" hidden></section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  // Si abres este archivo con doble clic (file://), apunta al servidor local.
+  const API = location.protocol === "file:" ? "http://127.0.0.1:8000" : "";
+
+  // Mismos colores que config.PALETTE_COLORS del servidor.
+  const COLORES = [
+    ["Rojo","#FF0000"],["Naranja","#FF8000"],["Amarillo","#FFFF00"],["Verde","#00C800"],
+    ["Cian","#00FFFF"],["Azul","#0000FF"],["Índigo","#4B0082"],["Violeta","#8B00FF"],
+    ["Rosa","#FF69B4"],["Marrón","#8B4513"],["Gris","#808080"],["Negro","#000000"]
+  ];
+
+  const $ = id => document.getElementById(id);
+  const canvas = $("canvas"), ctx = canvas.getContext("2d");
+  let color = COLORES[0][1], goma = false, dibujando = false, last = null;
+  let origen = "dibujo";          // 'dibujo' | 'archivo'
+  let archivo = null;
+
+  // ---------- paleta ----------
+  const cont = $("paleta");
+  function seleccionar(btn) {
+    cont.querySelectorAll(".sw").forEach(b => { b.classList.remove("sel"); b.setAttribute("aria-checked", "false"); });
+    btn.classList.add("sel"); btn.setAttribute("aria-checked", "true");
+  }
+  COLORES.forEach(([n, hx], i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "sw" + (i === 0 ? " sel" : ""); b.title = n;
+    b.style.background = hx; b.setAttribute("role", "radio"); b.setAttribute("aria-label", n);
+    b.setAttribute("aria-checked", i === 0 ? "true" : "false");
+    b.onclick = () => { color = hx; goma = false; seleccionar(b); };
+    cont.appendChild(b);
+  });
+  const bg = document.createElement("button");
+  bg.type = "button"; bg.className = "sw goma"; bg.textContent = "Goma"; bg.setAttribute("role", "radio");
+  bg.setAttribute("aria-checked", "false");
+  bg.onclick = () => { goma = true; seleccionar(bg); };
+  cont.appendChild(bg);
+
+  // ---------- dibujo (el lienzo queda transparente: solo se envían tus trazos) ----------
+  function pos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * canvas.width / r.width, y: (e.clientY - r.top) * canvas.height / r.height };
+  }
+  function trazo(a, b) {
+    ctx.globalCompositeOperation = goma ? "destination-out" : "source-over";
+    ctx.strokeStyle = color; ctx.fillStyle = color;
+    ctx.lineWidth = +$("grosor").value; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  canvas.addEventListener("pointerdown", e => {
+    dibujando = true; last = pos(e); canvas.setPointerCapture(e.pointerId);
+    trazo(last, { x: last.x + 0.01, y: last.y });
+    setOrigen("dibujo");
+  });
+  canvas.addEventListener("pointermove", e => {
+    if (!dibujando) return;
+    const p = pos(e); trazo(last, p); last = p;
+  });
+  ["pointerup", "pointercancel"].forEach(ev => canvas.addEventListener(ev, () => { dibujando = false; }));
+
+  $("borrar").onclick = () => {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    $("resultados").hidden = true;
+  };
+
+  // ---------- subir imagen ----------
+  function setOrigen(o) {
+    origen = o;
+    $("origenInfo").textContent = o === "archivo"
+      ? "Se analizará: la imagen subida. (Si dibujas de nuevo, volverá a analizarse el dibujo.)"
+      : "Se analizará: el dibujo del recuadro.";
+  }
+  $("archivo").addEventListener("change", e => {
+    archivo = e.target.files[0] || null;
+    if (!archivo) return;
+    $("previa").src = URL.createObjectURL(archivo);
+    $("nombreArchivo").textContent = "Imagen cargada: " + archivo.name;
+    $("vista").style.display = "block";
+    setOrigen("archivo");
+  });
+
+  // ---------- servidor ----------
+  fetch(API + "/api/estado").then(r => r.json()).then(d => {
+    $("estado").replaceChildren(document.createTextNode("Servidor: "), Object.assign(document.createElement("b"), { className: "ok", textContent: "conectado" }),
+      document.createTextNode(d.parametros_optimizados ? " · parámetros optimizados con algoritmo genético" : " · parámetros por defecto (sin entrenar)"));
+  }).catch(() => {
+    $("estado").replaceChildren(document.createTextNode("Servidor: "), Object.assign(document.createElement("b"), { className: "mal", textContent: "no disponible" }),
+      document.createTextNode(" · inicia el backend con: uvicorn main:app --reload"));
+  });
+
+  // ---------- resultados ----------
+  function el(tag, props, ...hijos) {
+    const e = document.createElement(tag);
+    Object.entries(props || {}).forEach(([k, v]) => k === "style" ? Object.assign(e.style, v) : e.setAttribute(k, v));
+    hijos.flat().forEach(h => { if (h != null) e.append(h.nodeType ? h : document.createTextNode(String(h))); });
+    return e;
+  }
+  function pintar(r) {
+    const box = $("resultados"); box.hidden = false;
+    const out = [el("h3", { style: { marginTop: 0 } }, "Colores reconocidos")];
+    r.colores.forEach(c => out.push(el("div", { class: "fila" },
+      el("div", { class: "mue", style: { background: c.hex } }),
+      el("div", {},
+        el("strong", {}, c.nombre + " "),
+        el("span", { class: "peq" }, `${c.hex} · RGB(${c.rgb.join(", ")}) · HSV(${c.hsv.h}°, ${c.hsv.s}, ${c.hsv.v}) · ${c.pixeles} px`),
+        el("div", { class: "barrita" }, el("span", { style: { width: c.presencia + "%", background: c.hex } })),
+        el("span", {}, `Presencia ${c.presencia}% · Similitud ${c.similitud}% · ΔE ${c.delta_e} · Coste ${c.coste}`)))));
+    if (r.desconocido.pixeles > 0) out.push(el("div", { class: "fila" },
+      el("div", { class: "mue", style: { background: "repeating-linear-gradient(45deg,#999,#999 4px,#ccc 4px,#ccc 8px)" } }),
+      el("div", {}, el("strong", {}, "Desconocido "), `Presencia ${r.desconocido.presencia}% · ${r.desconocido.pixeles} px`)));
+
+    out.push(el("h4", {}, "Distribución porcentual"));
+    const dist = el("div", { class: "dist" });
+    r.colores.forEach(c => dist.append(el("span", { title: `${c.nombre} ${c.presencia}%`, style: { width: c.presencia + "%", background: c.hex } })));
+    if (r.desconocido.pixeles > 0) dist.append(el("span", { title: "Desconocido", style: { width: r.desconocido.presencia + "%", background: "#999" } }));
+    out.push(dist, el("p", { class: "peq" }, `Suma de presencias: ${r.suma_presencia}%`));
+
+    const t = r.tecnico, ga = t.algoritmo_genetico;
+    const datos = [
+      ["Nodo inicial", t.nodo_inicial], ["Nodo objetivo", t.nodo_objetivo], ["Método de búsqueda", t.metodo_busqueda],
+      ["Nodos explorados / generados", `${t.nodos_explorados} / ${t.nodos_generados}`],
+      ["Rasgos extraídos", t.rasgos_extraidos.join(", ")], ["Coste total", t.coste_total],
+      ["Tiempo total", `${t.tiempos_ms.total} ms`],
+      ["Píxeles analizados", `${t.imagen.pixeles_validos} de ${t.imagen.pixeles_totales}`],
+      ["Pesos (rgb / hsv / lab / hist)", Object.values(t.parametros.pesos).join(" / ")],
+      ["Tolerancia", t.parametros.tolerancia],
+      ["Algoritmo genético", ga ? `generación ${ga.generacion}, fitness ${ga.fitness}` : "sin entrenar (parámetros por defecto)"]
+    ];
+    out.push(el("h4", {}, "Información técnica"),
+      el("table", {}, el("tbody", {}, datos.map(([k, v]) => el("tr", {}, el("th", {}, k), el("td", {}, v))))));
+
+    if (r.comparacion) out.push(el("h4", {}, "Comparación de algoritmos de búsqueda"),
+      el("table", {},
+        el("thead", {}, el("tr", {}, ["Método", "Nodos explorados", "Nodos generados", "Tiempo (ms)", "Coste", "Mismo resultado"].map(x => el("th", {}, x)))),
+        el("tbody", {}, r.comparacion.map(f => el("tr", {},
+          el("td", {}, f.metodo), el("td", {}, f.nodos_explorados), el("td", {}, f.nodos_generados),
+          el("td", {}, f.tiempo_busqueda_ms), el("td", {}, f.coste_total ?? "-"),
+          el("td", {}, f.mismo_resultado_que_heuristica == null ? "-" : (f.mismo_resultado_que_heuristica ? "sí" : "no")))))));
+    box.replaceChildren(...out);
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  function error(msg) {
+    const box = $("resultados"); box.hidden = false;
+    box.replaceChildren(el("p", { class: "error" }, msg));
+  }
+
+  // ---------- detectar ----------
+  $("detectar").onclick = async () => {
+    const btn = $("detectar"); btn.disabled = true; btn.textContent = "Analizando…";
+    try {
+      const fd = new FormData();
+      if (origen === "archivo" && archivo) {
+        fd.append("file", archivo); fd.append("origen", "archivo");
+      } else {
+        const blob = await new Promise(ok => canvas.toBlob(ok, "image/png"));
+        fd.append("file", blob, "canvas.png"); fd.append("origen", "dibujo");
+      }
+      fd.append("metodo", $("metodo").value); fd.append("comparar", "true");
+      const resp = await fetch(API + "/api/detectar", { method: "POST", body: fd });
+      const datos = await resp.json().catch(() => ({}));
+      if (!resp.ok || !datos.ok) throw new Error(datos.error || `Error del servidor (${resp.status}).`);
+      pintar(datos);
+    } catch (e) {
+      error(e instanceof TypeError ? "No se pudo conectar con el servidor Python. ¿Está iniciado (uvicorn main:app --reload)?" : e.message);
+    } finally { btn.disabled = false; btn.textContent = "Detectar"; }
+  };
+})();
+</script>
+</body>
+</html>
