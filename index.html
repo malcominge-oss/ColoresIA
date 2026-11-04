@@ -1,0 +1,61 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ColorIA - Reconoce colores</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header>
+        <h1>ColorIA</h1>
+        <p>Reconoce colores</p>
+    </header>
+
+    <main class="contenedor">
+
+        <aside class="paleta">
+            <h3>Paleta de colores</h3>
+            <div class="colores">
+                <button class="color" style="background:#ff0000" data-color="#ff0000"></button>
+                <button class="color" style="background:#ff7f00" data-color="#ff7f00"></button>
+                <button class="color" style="background:#ffff00" data-color="#ffff00"></button>
+                <button class="color" style="background:#00ff00" data-color="#00ff00"></button>
+                <button class="color" style="background:#0000ff" data-color="#0000ff"></button>
+                <button class="color" style="background:#4b0082" data-color="#4b0082"></button>
+                <button class="color" style="background:#9400d3" data-color="#9400d3"></button>
+                <button class="color" style="background:#ffffff" data-color="#ffffff"></button>
+                <button class="color" style="background:#000000" data-color="#000000"></button>
+                <button class="color" style="background:#ff69b4" data-color="#ff69b4"></button>
+            </div>
+        </aside>
+
+        <section class="area-trabajo">
+
+            <canvas id="lienzo" width="800" height="1300"></canvas>
+
+            <div class="botones">
+                <button id="limpiar">Limpiar</button>
+
+                <label for="imagen" class="boton-subir">
+                    Subir imagen
+                </label>
+                <input type="file" id="imagen" accept="image/*">
+
+                <button id="detectar">Detectar</button>
+            </div>
+
+            <div id="resultado">
+                <p>Color detectado: <span id="nombreColor">Ninguno</span></p>
+                <div id="muestraColor"></div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
